@@ -9,7 +9,7 @@ function bpgm_uninstall_cleanup_site() {
 	$groupmeta_table = $wpdb->base_prefix . 'bp_groups_groupmeta';
 
 	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $groupmeta_table ) ) === $groupmeta_table ) {
-		$meta_keys = array( 'bpgm_nome_bene', 'bpgm_indirizzo', 'bpgm_lat', 'bpgm_lng', 'bpgm_descrizione' );
+		$meta_keys = array( 'bpgm_indirizzo', 'bpgm_lat', 'bpgm_lng' );
 		$placeholders = implode( ', ', array_fill( 0, count( $meta_keys ), '%s' ) );
 		$wpdb->query( $wpdb->prepare( "DELETE FROM {$groupmeta_table} WHERE meta_key IN ( {$placeholders} )", $meta_keys ) );
 	}
