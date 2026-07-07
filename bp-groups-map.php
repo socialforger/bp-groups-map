@@ -1,7 +1,8 @@
 <?php
 /**
  * Plugin Name: BP Groups Map
- * Description: Integra indirizzo, categorie e tag nella tab Dettagli nativa dei gruppi e aggiunge una tab "Mappa" condizionale.
+ * Description: Georeferenziazione gruppi Buddypress/Buddyboss.
+ * Author: Socialforger
  * Version: 2.1.2
  * Text Domain: bp-groups-map
  * Domain Path: /languages
@@ -283,6 +284,10 @@ if ( ! function_exists( 'bpgm_geocode_address' ) ) {
 	}
 }
 
+/* -----------------------------------------------------------------------
+ * APPEND DI INDIRIZZO, CATEGORIE E TAG NELLA TAB DETTAGLI DI DEFAULT
+ * ---------------------------------------------------------------------*/
+
 if ( ! function_exists( 'bpgm_edit_screen_native_fields' ) ) {
 	function bpgm_edit_screen_native_fields() {
 		$group_id = bp_get_current_group_id();
@@ -317,7 +322,7 @@ if ( ! function_exists( 'bpgm_edit_screen_native_fields' ) ) {
 							<input type="checkbox" name="bpgm_categorie[]" value="<?php echo esc_attr( $cat->term_id ); ?>" <?php checked( in_array( $cat->term_id, $categorie_gruppo, true ) ); ?> />
 							<?php echo esc_html( $cat->name ); ?>
 						</label>
-					<?php endforeach; ?>
+					<?php endnav_item_position; foreach; ?>
 				<?php endif; ?>
 			</p>
 			<p>
@@ -327,7 +332,10 @@ if ( ! function_exists( 'bpgm_edit_screen_native_fields' ) ) {
 		</div>
 		<?php
 	}
+	// Usiamo hook multipli per assicurarci che appaia sia in modifica frontend (Manage) che durante la creazione del gruppo
 	add_action( 'bp_after_group_details_admin_form', 'bpgm_edit_screen_native_fields' );
+	add_action( 'bp_after_group_details_fields', 'bpgm_edit_screen_native_fields' );
+	add_action( 'bp_after_group_details_creation_step', 'bpgm_edit_screen_native_fields' );
 }
 
 if ( ! function_exists( 'bpgm_save_native_fields' ) ) {
@@ -374,7 +382,7 @@ if ( ! function_exists( 'bpgm_display_in_native_details' ) ) {
 
 		wp_enqueue_style( 'bpgm-style', BPGM_URL . 'assets/css/map.css', array(), BPGM_VERSION );
 		?>
-		<div class="bpgm-custom-details-block" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+		<div class="bpgm-custom-details-block" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; width: 100%; display: block; clear: both;">
 			<?php if ( $indirizzo ) : ?><p class="bpgm-indirizzo">📍 <strong><?php esc_html_e( 'Posizione:', 'bp-groups-map' ); ?></strong> <?php echo esc_html( $indirizzo ); ?></p><?php endif; ?>
 
 			<?php if ( ! is_wp_error( $categorie ) && $categorie ) : ?>
@@ -401,7 +409,9 @@ if ( ! function_exists( 'bpgm_display_in_native_details' ) ) {
 		</div>
 		<?php
 	}
+	// Hook estesi sia per BuddyPress Nouveau che per i tracciati BuddyBoss della scheda dettagli
 	add_action( 'bp_after_group_details', 'bpgm_display_in_native_details' );
+	add_action( 'bp_group_meta_section', 'bpgm_display_in_native_details' );
 }
 
 if ( ! function_exists( 'bpgm_register_mappa_extension' ) ) {
@@ -415,7 +425,7 @@ if ( ! function_exists( 'bpgm_register_mappa_extension' ) ) {
 					'name'               => __( 'Mappa', 'bp-groups-map' ),
 					'nav_item_position'  => 25,
 					'access'             => 'anyone',
-					'show_tab'          => 'anyone',
+					'show_tab'           => 'anyone',
 					'enable_edit_item'   => false,
 					'enable_create_step' => false,
 				);
