@@ -322,7 +322,7 @@ if ( ! function_exists( 'bpgm_edit_screen_native_fields' ) ) {
 							<input type="checkbox" name="bpgm_categorie[]" value="<?php echo esc_attr( $cat->term_id ); ?>" <?php checked( in_array( $cat->term_id, $categorie_gruppo, true ) ); ?> />
 							<?php echo esc_html( $cat->name ); ?>
 						</label>
-					<?php endnav_item_position; foreach; ?>
+					<?php endforeach; ?>
 				<?php endif; ?>
 			</p>
 			<p>
