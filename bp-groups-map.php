@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: BP Groups Map
- * Description: Il plugin aggiunge una sezione "Dettagli" ai gruppi Buddypress/Buddyboss, con indirizzo geolocalizzato che appare come marker su mappa OSM.
+ * Description: Integra indirizzo, categorie e tag nella tab Dettagli nativa dei gruppi e aggiunge una tab "Mappa" condizionale.
  * Author: Socialforger
  * Version: 2.1.2
  * Text Domain: bp-groups-map
@@ -21,12 +21,10 @@ function bpgm_load_textdomain() {
 }
 add_action( 'init', 'bpgm_load_textdomain' );
 
-// Meta keys sul gruppo.
-define( 'BPGM_META_NOME_BENE', 'bpgm_nome_bene' );
+// Meta keys geografiche sul gruppo.
 define( 'BPGM_META_INDIRIZZO', 'bpgm_indirizzo' );
 define( 'BPGM_META_LAT', 'bpgm_lat' );
 define( 'BPGM_META_LNG', 'bpgm_lng' );
-define( 'BPGM_META_DESCRIZIONE', 'bpgm_descrizione' );
 
 function bpgm_check_dependencies() {
 	if ( ! function_exists( 'buddypress' ) || ! bp_is_active( 'groups' ) ) {
@@ -144,7 +142,7 @@ function bpgm_render_admin_page() {
 	?>
 	<div class="wrap">
 		<h1><?php esc_html_e( 'Categorie Gruppo', 'bp-groups-map' ); ?></h1>
-		<p><?php esc_html_e( 'Queste categorie saranno selezionabili nella scheda del gruppo.', 'bp-groups-map' ); ?></p>
+		<p><?php esc_html_e( 'Queste categorie saranno selezionabili nei dettagli nativi del gruppo.', 'bp-groups-map' ); ?></p>
 		<form method="post">
 			<?php wp_nonce_field( 'bpgm_add_categoria' ); ?>
 			<input type="text" name="bpgm_new_categoria" placeholder="<?php esc_attr_e( 'Nome nuova categoria', 'bp-groups-map' ); ?>" />
@@ -257,276 +255,30 @@ function bpgm_geocode_address( $address ) {
 }
 
 /* -----------------------------------------------------------------------
- * TAB PUBBLICO SPOSTATO SU "DETTAGLI" (DETAILS)
+ * APPEND DI INDIRIZZO, CATEGORIE E TAG NELLA TAB DETTAGLI DI DEFAULT
  * ---------------------------------------------------------------------*/
 
-function bpgm_register_group_extension() {
-	if ( ! class_exists( 'BP_Group_Extension' ) ) { return; }
+// 1. Aggiunta dei soli 3 campi mancanti nel form di modifica nativo (Nome e Descrizione sono già gestiti da BP)
+function bpgm_edit_screen_native_fields() {
+	$group_id = bp_get_current_group_id();
+	if ( ! $group_id ) return;
 
-	class BPGM_Group_Extension extends BP_Group_Extension {
-		public function __construct() {
-			$args = array(
-				'slug'              => 'dettagli', // URL: /groups/nome-gruppo/dettagli/
-				'name'              => __( 'Dettagli', 'bp-groups-map' ), // Nome Tab
-				'nav_item_position' => 20, // Posizionato dopo la Home/Attività di default
-				'access'            => 'anyone',
-				'show_tab'          => 'anyone',
-				'admin_name'        => __( 'Dettagli', 'bp-groups-map' ),
-				'admin_access'      => 'admins',
-			);
-			parent::init( $args );
-		}
+	$indirizzo = groups_get_groupmeta( $group_id, BPGM_META_INDIRIZZO );
+	$lat       = groups_get_groupmeta( $group_id, BPGM_META_LAT );
+	$lng       = groups_get_groupmeta( $group_id, BPGM_META_LNG );
 
-		public function display( $group_id = null ) {
-			$group_id = $group_id ?: bp_get_current_group_id();
-			$this->render_scheda_readonly( $group_id );
-		}
-
-		private function render_scheda_readonly( $group_id ) {
-			$nome_bene   = groups_get_groupmeta( $group_id, BPGM_META_NOME_BENE );
-			$indirizzo   = groups_get_groupmeta( $group_id, BPGM_META_INDIRIZZO );
-			$lat         = groups_get_groupmeta( $group_id, BPGM_META_LAT );
-			$lng         = groups_get_groupmeta( $group_id, BPGM_META_LNG );
-			$descrizione = groups_get_groupmeta( $group_id, BPGM_META_DESCRIZIONE );
-			$categorie   = wp_get_object_terms( $group_id, 'group_cat' );
-			$tags        = wp_get_object_terms( $group_id, 'group_tag' );
-
-			$custom_marker_url = '';
-			if ( ! is_wp_error( $categorie ) && ! empty( $categorie ) ) {
-				foreach ( $categorie as $cat ) {
-					$img = get_term_meta( $cat->term_id, 'bpgm_marker_icon', true );
-					if ( $img ) { $custom_marker_url = $img; break; }
-				}
-			}
-			if ( ! $custom_marker_url && ! is_wp_error( $tags ) && ! empty( $tags ) ) {
-				foreach ( $tags as $tag ) {
-					$img = get_term_meta( $tag->term_id, 'bpgm_marker_icon', true );
-					if ( $img ) { $custom_marker_url = $img; break; }
-				}
-			}
-			?>
-			<div class="bpgm-scheda-view">
-				<?php if ( $nome_bene ) : ?><h3><?php echo esc_html( $nome_bene ); ?></h3><?php endif; ?>
-				<?php if ( $indirizzo ) : ?><p class="bpgm-indirizzo">📍 <?php echo esc_html( $indirizzo ); ?></p><?php endif; ?>
-
-				<?php if ( $lat && $lng ) :
-					if ( class_exists( 'Leaflet_Map' ) ) {
-						echo do_shortcode( '[leaflet-map height="300px" lat="' . esc_attr( $lat ) . '" lng="' . esc_attr( $lng ) . '" zoom="15" scrollwheel="false"]' );
-						if ( $custom_marker_url ) { echo do_shortcode( '[leaflet-marker iconUrl="' . esc_url( $custom_marker_url ) . '"]' . esc_html( $nome_bene ?: bp_get_current_group_name() ) . '[/leaflet-marker]' ); }
-						else { echo do_shortcode( '[leaflet-marker]' . esc_html( $nome_bene ?: bp_get_current_group_name() ) . '[/leaflet-marker]' ); }
-					} else {
-						bpgm_enqueue_leaflet();
-						wp_enqueue_script( 'bpgm-scheda-map', BPGM_URL . 'assets/js/scheda-map.js', array( 'leaflet' ), BPGM_VERSION, true );
-						wp_enqueue_style( 'bpgm-style', BPGM_URL . 'assets/css/map.css', array(), BPGM_VERSION );
-						wp_localize_script( 'bpgm-scheda-map', 'bpgmScheda', array( 'lat' => floatval( $lat ), 'lng' => floatval( $lng ), 'name' => $nome_bene ?: bp_get_current_group_name(), 'markerIcon' => esc_url_raw( $custom_marker_url ) ) );
-						?><div id="bpgm-scheda-map" style="height:300px;"></div><?php
-					}
-				endif; ?>
-
-				<?php if ( $descrizione ) : ?>
-					<h4><?php esc_html_e( 'Descrizione del gruppo', 'bp-groups-map' ); ?></h4>
-					<p><?php echo wp_kses_post( wpautop( $descrizione ) ); ?></p>
-				<?php endif; ?>
-
-				<?php if ( ! is_wp_error( $categorie ) && $categorie ) : ?>
-					<div class="bpgm-categorie">
-						<?php foreach ( $categorie as $cat ) : $icon_url = get_term_meta( $cat->term_id, 'bpgm_marker_icon', true ); ?>
-							<span class="bpgm-badge bpgm-badge-categoria" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;">
-								<?php if ( $icon_url ) : ?><img src="<?php echo esc_url( $icon_url ); ?>" style="width: 16px; height: 16px; object-fit: contain;" alt="" /><?php endif; ?>
-								<?php echo esc_html( $cat->name ); ?>
-							</span>
-						<?php endforeach; ?>
-					</div>
-				<?php endif; ?>
-
-				<?php if ( ! is_wp_error( $tags ) && $tags ) : ?>
-					<div class="bpgm-tags">
-						<?php foreach ( $tags as $tag ) : $icon_url = get_term_meta( $tag->term_id, 'bpgm_marker_icon', true ); ?>
-							<span class="bpgm-badge bpgm-badge-tag" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;">
-								<?php if ( $icon_url ) : ?><img src="<?php echo esc_url( $icon_url ); ?>" style="width: 16px; height: 16px; object-fit: contain;" alt="" /><?php endif; ?>
-								#<?php echo esc_html( $tag->name ); ?>
-							</span>
-						<?php endforeach; ?>
-					</div>
-				<?php endif; ?>
-			</div>
-			<?php
-		}
-
-		public function edit_screen( $group_id = null ) {
-			if ( ! bp_is_item_admin() ) { return; }
-			$group_id = $group_id ?: bp_get_current_group_id();
-			$nome_bene   = groups_get_groupmeta( $group_id, BPGM_META_NOME_BENE );
-			$indirizzo   = groups_get_groupmeta( $group_id, BPGM_META_INDIRIZZO );
-			$descrizione = groups_get_groupmeta( $group_id, BPGM_META_DESCRIZIONE );
-			$lat         = groups_get_groupmeta( $group_id, BPGM_META_LAT );
-			$lng         = groups_get_groupmeta( $group_id, BPGM_META_LNG );
-
-			wp_enqueue_style( 'bpgm-style', BPGM_URL . 'assets/css/map.css', array(), BPGM_VERSION );
-			wp_nonce_field( 'bpgm_save_scheda', 'bpgm_nonce' );
-			?>
-			<h4><?php esc_html_e( 'Modifica Dettagli Gruppo', 'bp-groups-map' ); ?></h4>
-			<p>
-				<label for="bpgm_nome_bene"><strong>Nome del bene</strong></label><br/>
-				<input type="text" id="bpgm_nome_bene" name="bpgm_nome_bene" class="widefat" value="<?php echo esc_attr( $nome_bene ); ?>" />
-			</p>
-			<p>
-				<label for="bpgm_indirizzo"><strong>Indirizzo del bene</strong></label><br/>
-				<input type="text" id="bpgm_indirizzo" name="bpgm_indirizzo" class="widefat" value="<?php echo esc_attr( $indirizzo ); ?>" />
-				<?php if ( $lat && $lng ) : ?><br/><span class="bpgm-geo-status">✅ Geolocalizzato: <?php echo esc_html($lat).', '.esc_html($lng); ?></span><?php endif; ?>
-			</p>
-			<p>
-				<label for="bpgm_descrizione"><strong>Descrizione del gruppo</strong></label><br/>
-				<textarea id="bpgm_descrizione" name="bpgm_descrizione" class="widefat" rows="4"><?php echo esc_textarea( $descrizione ); ?></textarea>
-			</p>
-			<?php
-			$tutte_categorie   = get_terms( array( 'taxonomy' => 'group_cat', 'hide_empty' => false ) );
-			$categorie_gruppo  = wp_get_object_terms( $group_id, 'group_cat', array( 'fields' => 'ids' ) );
-			$tag_gruppo        = wp_get_object_terms( $group_id, 'group_tag', array( 'fields' => 'names' ) );
-			?>
-			<p>
-				<strong>Categorie</strong><br/>
-				<?php foreach ( $tutte_categorie as $cat ) : ?>
-					<label style="display:inline-block; margin-right:12px;">
-						<input type="checkbox" name="bpgm_categorie[]" value="<?php echo esc_attr( $cat->term_id ); ?>" <?php checked( in_array( $cat->term_id, $categorie_gruppo, true ) ); ?> />
-						<?php echo esc_html( $cat->name ); ?>
-					</label>
-				<?php endforeach; ?>
-			</p>
-			<p>
-				<label for="bpgm_tags"><strong>Tag</strong></label><br/>
-				<input type="text" id="bpgm_tags" name="bpgm_tags" class="widefat" value="<?php echo esc_attr( implode( ', ', $tag_gruppo ) ); ?>" />
-			</p>
-			<?php
-		}
-
-		public function edit_screen_save( $group_id = null ) {
-			if ( ! isset( $_POST['bpgm_nonce'] ) || ! wp_verify_nonce( $_POST['bpgm_nonce'], 'bpgm_save_scheda' ) ) { return; }
-			$group_id = $group_id ?: bp_get_current_group_id();
-			$nome_bene   = isset( $_POST['bpgm_nome_bene'] ) ? sanitize_text_field( wp_unslash( $_POST['bpgm_nome_bene'] ) ) : '';
-			$descrizione = isset( $_POST['bpgm_descrizione'] ) ? sanitize_textarea_field( wp_unslash( $_POST['bpgm_descrizione'] ) ) : '';
-			$indirizzo   = isset( $_POST['bpgm_indirizzo'] ) ? sanitize_text_field( wp_unslash( $_POST['bpgm_indirizzo'] ) ) : '';
-
-			groups_update_groupmeta( $group_id, BPGM_META_NOME_BENE, $nome_bene );
-			groups_update_groupmeta( $group_id, BPGM_META_DESCRIZIONE, $descrizione );
-
-			wp_set_object_terms( $group_id, isset( $_POST['bpgm_categorie'] ) ? array_map( 'intval', (array) $_POST['bpgm_categorie'] ) : array(), 'group_cat' );
-			$tags_raw = isset( $_POST['bpgm_tags'] ) ? sanitize_text_field( wp_unslash( $_POST['bpgm_tags'] ) ) : '';
-			wp_set_object_terms( $group_id, array_filter( array_map( 'trim', explode( ',', $tags_raw ) ) ), 'group_tag' );
-
-			$indirizzo_precedente = groups_get_groupmeta( $group_id, BPGM_META_INDIRIZZO );
-			groups_update_groupmeta( $group_id, BPGM_META_INDIRIZZO, $indirizzo );
-
-			if ( $indirizzo && $indirizzo !== $indirizzo_precedente ) {
-				$geo = bpgm_geocode_address( $indirizzo );
-				if ( ! is_wp_error( $geo ) ) {
-					groups_update_groupmeta( $group_id, BPGM_META_LAT, $geo['lat'] );
-					groups_update_groupmeta( $group_id, BPGM_META_LNG, $geo['lng'] );
-				}
-			} elseif ( '' === $indirizzo ) {
-				groups_delete_groupmeta( $group_id, BPGM_META_LAT );
-				groups_delete_groupmeta( $group_id, BPGM_META_LNG );
-			}
-		}
-	}
-	bp_register_group_extension( 'BPGM_Group_Extension' );
-}
-add_action( 'bp_init', 'bpgm_register_group_extension' );
-
-/* -----------------------------------------------------------------------
- * REST: GRUPPI GEOLOCALIZZATI IN GEOJSON
- * ---------------------------------------------------------------------*/
-
-function bpgm_register_rest_route() {
-	register_rest_route( 'abc/v1', '/groups-map', array(
-		'methods'             => 'GET',
-		'callback'            => 'bpgm_rest_get_groups',
-		'permission_callback' => '__return_true',
-	) );
-}
-add_action( 'rest_api_init', 'bpgm_register_rest_route' );
-
-function bpgm_rest_get_groups( WP_REST_Request $request ) {
-	$group_type = $request->get_param( 'group_type' );
-	$args = array(
-		'per_page'   => 0, 'page' => 1, 'status' => array( 'public' ),
-		'meta_query' => array( array( 'key' => BPGM_META_LAT, 'compare' => 'EXISTS' ), array( 'key' => BPGM_META_LNG, 'compare' => 'EXISTS' ) ),
-	);
-	if ( $group_type ) { $args['group_type'] = sanitize_key( $group_type ); }
-	$result = function_exists( 'groups_get_groups' ) ? groups_get_groups( $args ) : array( 'groups' => array() );
-	$features = array(); $term_icons = array();
-
-	$all_cats = get_terms( array( 'taxonomy' => 'group_cat', 'hide_empty' => false ) );
-	$all_tags = get_terms( array( 'taxonomy' => 'group_tag', 'hide_empty' => false ) );
-	if ( ! is_wp_error( $all_cats ) ) { foreach ( $all_cats as $t ) { $icon = get_term_meta( $t->term_id, 'bpgm_marker_icon', true ); if ( $icon ) { $term_icons[$t->name] = esc_url_raw( $icon ); } } }
-	if ( ! is_wp_error( $all_tags ) ) { foreach ( $all_tags as $t ) { $icon = get_term_meta( $t->term_id, 'bpgm_marker_icon', true ); if ( $icon ) { $term_icons[$t->name] = esc_url_raw( $icon ); } } }
-
-	foreach ( $result['groups'] as $group ) {
-		$lat = groups_get_groupmeta( $group->id, BPGM_META_LAT ); $lng = groups_get_groupmeta( $group->id, BPGM_META_LNG );
-		if ( ! $lat || ! $lng ) continue;
-		$nome_bene = groups_get_groupmeta( $group->id, BPGM_META_NOME_BENE );
-		$categorie_terms = wp_get_object_terms( $group->id, 'group_cat' );
-		$tag_terms       = wp_get_object_terms( $group->id, 'group_tag' );
-		$categorie_names = array(); $tag_names = array(); $marker_custom = '';
-
-		if ( ! is_wp_error( $categorie_terms ) && ! empty( $categorie_terms ) ) {
-			foreach ( $categorie_terms as $term ) { $categorie_names[] = $term->name; }
-			$marker_custom = get_term_meta( $categorie_terms[0]->term_id, 'bpgm_marker_icon', true );
-		}
-		if ( ! is_wp_error( $tag_terms ) && ! empty( $tag_terms ) ) {
-			foreach ( $tag_terms as $term ) { $tag_names[] = $term->name; }
-			if ( ! $marker_custom ) { $marker_custom = get_term_meta( $tag_terms[0]->term_id, 'bpgm_marker_icon', true ); }
-		}
-
-		$features[] = array(
-			'type' => 'Feature',
-			'geometry' => array( 'type' => 'Point', 'coordinates' => array( floatval( $lng ), floatval( $lat ) ) ),
-			'properties' => array(
-				'id' => $group->id, 'name' => $nome_bene ?: $group->name, 'indirizzo' => groups_get_groupmeta( $group->id, BPGM_META_INDIRIZZO ),
-				'description' => wp_trim_words( groups_get_groupmeta( $group->id, BPGM_META_DESCRIZIONE ) ?: $group->description, 20 ),
-				'categorie' => $categorie_names, 'tags' => $tag_names, 'marker_icon' => esc_url_raw( $marker_custom ),
-				'permalink' => bp_get_group_permalink( $group ),
-				'avatar' => bp_core_fetch_avatar( array( 'item_id' => $group->id, 'object' => 'group', 'type' => 'thumb', 'html' => false ) ),
-				'members' => groups_get_totalmembercount( $group->id ),
-			),
-		);
-	}
-	return new WP_REST_Response( array( 'type' => 'FeatureCollection', 'features' => $features, 'term_icons' => $term_icons ), 200 );
-}
-
-function bpgm_shortcode_map( $atts ) {
-	$atts = shortcode_atts( array( 'group_type' => '', 'height' => '600px', 'layers' => '' ), $atts, 'gruppi_map' );
-	if ( class_exists( 'Leaflet_Map' ) ) {
-		$rest_url = rest_url( 'abc/v1/groups-map' );
-		if ( ! empty( $atts['group_type'] ) ) { $rest_url = add_query_arg( 'group_type', sanitize_key( $atts['group_type'] ), $rest_url ); }
-		$output = do_shortcode( '[leaflet-map height="' . esc_attr( $atts['height'] ) . '" fitbounds="1"]' );
-		$output .= do_shortcode( '[leaflet-geojson src="' . esc_url_raw( $rest_url ) . '" cluster="true"]' );
-		if ( ! empty( $atts['layers'] ) ) {
-			foreach ( array_map( 'trim', explode( ',', $atts['layers'] ) ) as $layer ) {
-				$layer_url = esc_url_raw( $layer );
-				if ( preg_match( '/\.(kml|kmz)$/i', $layer_url ) ) { $output .= do_shortcode( '[leaflet-kml src="' . $layer_url . '"]' ); }
-				else { $output .= do_shortcode( '[leaflet-geojson src="' . $layer_url . '"]' ); }
-			}
-		}
-		return $output;
-	} else {
-		bpgm_enqueue_leaflet();
-		wp_enqueue_style( 'leaflet-markercluster', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css', array('leaflet'), '1.5.3' );
-		wp_enqueue_style( 'leaflet-markercluster-default', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css', array('leaflet-markercluster'), '1.5.3' );
-		wp_enqueue_script( 'leaflet-markercluster', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js', array('leaflet'), '1.5.3', true );
-		wp_enqueue_style( 'bpgm-style', BPGM_URL . 'assets/css/map.css', array(), BPGM_VERSION );
-		wp_enqueue_script( 'bpgm-frontend-map', BPGM_URL . 'assets/js/frontend-map.js', array( 'leaflet', 'leaflet-markercluster' ), BPGM_VERSION, true );
-		wp_localize_script( 'bpgm-frontend-map', 'bpgmFrontend', array(
-			'restUrl' => esc_url_raw( rest_url( 'abc/v1/groups-map' ) ), 'groupType' => sanitize_key( $atts['group_type'] ),
-			'defaultLat' => floatval( get_option( 'bpgm_default_lat', '41.9028' ) ), 'defaultLng' => floatval( get_option( 'bpgm_default_lng', '12.4964' ) ),
-			'defaultZoom' => intval( get_option( 'bpgm_default_zoom', '6' ) ),
-		) );
-		return '<div id="bpgm-map" style="height:' . esc_attr( $atts['height'] ) . ';"></div>';
-	}
-}
-
-// --- PROTEZIONE CONFLITTI SHORTCODE ---
-add_shortcode( 'gruppi_map', 'bpgm_shortcode_map' );
-if ( ! shortcode_exists( 'osm_map' ) ) {
-	add_shortcode( 'osm_map', 'bpgm_shortcode_map' );
-}
+	wp_enqueue_style( 'bpgm-style', BPGM_URL . 'assets/css/map.css', array(), BPGM_VERSION );
+	wp_nonce_field( 'bpgm_save_scheda', 'bpgm_nonce' );
+	?>
+	<div class="bpgm-native-edit-fields" style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+		<p>
+			<label for="bpgm_indirizzo"><strong><?php esc_html_e( 'Indirizzo geografico / Sede', 'bp-groups-map' ); ?></strong></label><br/>
+			<input type="text" id="bpgm_indirizzo" name="bpgm_indirizzo" class="widefat" value="<?php echo esc_attr( $indirizzo ); ?>" placeholder="es. Via dei Mercati Generali, Roma" style="width:100%;" />
+			<span class="description"><?php esc_html_e( 'Inserendo la posizione, la tab "Mappa" comparirà sul profilo pubblico di questo gruppo.', 'bp-groups-map' ); ?></span>
+			<?php if ( $lat && $lng ) : ?>
+				<br/><span class="bpgm-geo-status">✅ <?php printf( esc_html__( 'Geolocalizzato: %s, %s', 'bp-groups-map' ), esc_html( $lat ), esc_html( $lng ) ); ?></span>
+			<?php endif; ?>
+		</p>
+		<?php
+		$tutte_categorie   = get_terms( array( 'taxonomy' => 'group_cat', 'hide_empty' => false ) );
+		$categorie_gruppo  = wp_get_object_terms( $group_id, 'group_cat', array( 'fields'
