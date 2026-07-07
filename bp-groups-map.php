@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: BP Groups Map
- * Description: Integra indirizzo, categorie e tag nella tab Dettagli nativa dei gruppi e aggiunge una tab "Mappa" condizionale.
+ * Description: Georeferenziazione gruppi Buddypress/Buddyboss.
  * Author: Socialforger
  * Version: 2.1.2
  * Text Domain: bp-groups-map
@@ -258,7 +258,6 @@ function bpgm_geocode_address( $address ) {
  * APPEND DI INDIRIZZO, CATEGORIE E TAG NELLA TAB DETTAGLI DI DEFAULT
  * ---------------------------------------------------------------------*/
 
-// 1. Aggiunta dei soli 3 campi mancanti nel form di modifica nativo (Nome e Descrizione sono già gestiti da BP)
 function bpgm_edit_screen_native_fields() {
 	$group_id = bp_get_current_group_id();
 	if ( ! $group_id ) return;
@@ -281,4 +280,12 @@ function bpgm_edit_screen_native_fields() {
 		</p>
 		<?php
 		$tutte_categorie   = get_terms( array( 'taxonomy' => 'group_cat', 'hide_empty' => false ) );
-		$categorie_gruppo  = wp_get_object_terms( $group_id, 'group_cat', array( 'fields'
+		$categorie_gruppo  = wp_get_object_terms( $group_id, 'group_cat', array( 'fields' => 'ids' ) );
+		$tag_gruppo        = wp_get_object_terms( $group_id, 'group_tag', array( 'fields' => 'names' ) );
+		?>
+		<p>
+			<strong><?php esc_html_e( 'Categorie', 'bp-groups-map' ); ?></strong><br/>
+			<?php if ( $tutte_categorie ) : ?>
+				<?php foreach ( $tutte_categorie as $cat ) : ?>
+					<label style="display:inline-block; margin-right:12px; margin-top:5px;">
+						<input type="checkbox" name="bpgm_categorie[]" value="<?php echo esc_attr( $cat->term_id ); ?>" <?php checked( in_
